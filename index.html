@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gravador de Áudio</title>
+</head>
+<body>
+    <h1>Gravador de Áudio</h1>
+    <button id="start">Iniciar Gravação</button>
+    <button id="stop" disabled>Parar Gravação</button>
+    <audio id="audio" controls></audio>
+    <div id="transcription" style="margin-top: 20px;">
+        <h2>Transcrição:</h2>
+        <p id="transcriptionText">Nenhuma transcrição disponível</p>
+    </div>
+    <script>
+        const startButton = document.getElementById('start');
+        const stopButton = document.getElementById('stop');
+        const audio = document.getElementById('audio');
+        const transcriptionText = document.getElementById('transcriptionText');
+
+        let mediaRecorder;
+        let audioChunks = [];
+
+        startButton.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    audioChunks = [];
+                    const audioURL = URL.createObjectURL(audioBlob);
+                    audio.src = audioURL;
+
+                    // Enviar o áudio para o backend
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'recording.webm');
+
+                    try {
+                        const response = await fetch('http://localhost:5000/transcribe', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const result = await response.json();
+                        transcriptionText.textContent = result.transcription || 'Erro na transcrição';
+                    } catch (err) {
+                        console.error('Erro ao enviar áudio para transcrição:', err);
+                        transcriptionText.textContent = 'Erro ao transcrever áudio';
+                    }
+                };
+
+                mediaRecorder.start();
+                startButton.disabled = true;
+                stopButton.disabled = false;
+            } catch (err) {
+                console.error('Erro ao acessar o microfone:', err);
+            }
+        });
+
+        stopButton.addEventListener('click', () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                startButton.disabled = false;
+                stopButton.disabled = true;
+            }
+        });
+    </script>
+</body>
+</html>
+
