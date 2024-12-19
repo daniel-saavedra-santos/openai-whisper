@@ -3,74 +3,239 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gravador de Áudio</title>
+    <title>Whisper Speech to Text App</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .container {
+            background-color: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #3498db;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        #output {
+            background-color: #ecf0f1;
+            border: 1px solid #bdc3c7;
+            border-radius: 5px;
+            padding: 15px;
+            min-height: 100px;
+            margin-bottom: 10px;
+        }
+        #copyButton {
+            background-color: #2ecc71;
+        }
+        #copyButton:hover {
+            background-color: #27ae60;
+        }
+        #clearButton {
+            background-color: #e74c3c;
+        }
+        #clearButton:hover {
+            background-color: #c0392b;
+        }
+        .status {
+            text-align: center;
+            margin-top: 10px;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+        #passcodeScreen {
+            text-align: center;
+        }
+        #passcodeInput {
+            font-size: 16px;
+            padding: 10px;
+            margin-right: 10px;
+        }
+    </style>
 </head>
 <body>
-    <h1>Gravador de Áudio</h1>
-    <button id="start">Iniciar Gravação</button>
-    <button id="stop" disabled>Parar Gravação</button>
-    <audio id="audio" controls></audio>
-    <div id="transcription" style="margin-top: 20px;">
-        <h2>Transcrição:</h2>
-        <p id="transcriptionText">Nenhuma transcrição disponível</p>
+    <div class="container">
+        <h1>Whisper Speech to Text Converter</h1>
+        <div id="passcodeScreen">
+            <input type="password" id="passcodeInput" placeholder="Enter passcode">
+            <button id="submitPasscode">Submit</button>
+        </div>
+        <div id="appContent" style="display: none;">
+            <div class="button-group">
+                <button id="startButton">Record</button>
+                <button id="stopButton" disabled>Stop</button>
+                <button id="copyButton" disabled>Copy</button>
+                <button id="clearButton" disabled>Clear</button>
+            </div>
+            <div id="output"></div>
+            <div id="status" class="status"></div>
+        </div>
     </div>
-    <script>
-        const startButton = document.getElementById('start');
-        const stopButton = document.getElementById('stop');
-        const audio = document.getElementById('audio');
-        const transcriptionText = document.getElementById('transcriptionText');
 
+    <script>
+        const passcodeScreen = document.getElementById('passcodeScreen');
+        const passcodeInput = document.getElementById('passcodeInput');
+        const submitPasscode = document.getElementById('submitPasscode');
+        const appContent = document.getElementById('appContent');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const copyButton = document.getElementById('copyButton');
+        const clearButton = document.getElementById('clearButton');
+        const output = document.getElementById('output');
+        const status = document.getElementById('status');
+    
+        const correctPasscode = 'admin'; // Passcode set to 'your-passcode'
+    
+        submitPasscode.onclick = () => {
+            if (passcodeInput.value === correctPasscode) {
+                passcodeScreen.style.display = 'none';
+                appContent.style.display = 'block';
+            } else {
+                alert('Incorrect passcode. Please try again.');
+                passcodeInput.value = '';
+            }
+        };
+    
         let mediaRecorder;
         let audioChunks = [];
-
-        startButton.addEventListener('click', async () => {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-
-                mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
-                };
-
-                mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    audioChunks = [];
-                    const audioURL = URL.createObjectURL(audioBlob);
-                    audio.src = audioURL;
-
-                    // Enviar o áudio para o backend
-                    const formData = new FormData();
-                    formData.append('audio', audioBlob, 'recording.webm');
-
-                    try {
-                        const response = await fetch('http://localhost:5000/transcribe', {
-                            method: 'POST',
-                            body: formData
-                        });
-                        const result = await response.json();
-                        transcriptionText.textContent = result.transcription || 'Erro na transcrição';
-                    } catch (err) {
-                        console.error('Erro ao enviar áudio para transcrição:', err);
-                        transcriptionText.textContent = 'Erro ao transcrever áudio';
-                    }
-                };
-
-                mediaRecorder.start();
-                startButton.disabled = true;
-                stopButton.disabled = false;
-            } catch (err) {
-                console.error('Erro ao acessar o microfone:', err);
-            }
-        });
-
-        stopButton.addEventListener('click', () => {
+    
+        function resetUI() {
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            copyButton.disabled = true;
+            clearButton.disabled = true;
+            output.textContent = '';
+            status.textContent = '';
+        }
+    
+        startButton.onclick = async () => {
+            audioChunks = []; // Reset audio chunks
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+    
+            mediaRecorder.ondataavailable = (event) => {
+                audioChunks.push(event.data);
+            };
+    
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                sendAudioToServer(audioBlob);
+            };
+    
+            mediaRecorder.start();
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            copyButton.disabled = true;
+            clearButton.disabled = false;
+            status.textContent = 'Recording...';
+        };
+    
+        stopButton.onclick = () => {
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                 mediaRecorder.stop();
                 startButton.disabled = false;
                 stopButton.disabled = true;
+                status.textContent = 'Transcribing...';
             }
-        });
+        };
+    
+        copyButton.onclick = () => {
+            navigator.clipboard.writeText(output.textContent).then(() => {
+                status.textContent = 'Text copied to clipboard!';
+                setTimeout(() => {
+                    status.textContent = '';
+                }, 2000);
+            });
+        };
+    
+        clearButton.onclick = () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            audioChunks = [];
+            resetUI();
+            status.textContent = 'Cleared!';
+            setTimeout(() => {
+                status.textContent = '';
+            }, 2000);
+        };
+    
+        function formatText(text) {
+            const segments = text.split(/(?<=[.!?])\s+/);
+            let formattedText = '';
+            let currentLine = '';
+    
+            segments.forEach(segment => {
+                if (currentLine.length + segment.length > 100) {  // Adjust 100 to your preferred line length
+                    formattedText += currentLine.trim() + '\n';
+                    currentLine = '';
+                }
+                currentLine += segment + ' ';
+                
+                if (/[.!?]$/.test(segment)) {
+                    formattedText += currentLine.trim() + '\n';
+                    currentLine = '';
+                }
+            });
+    
+            if (currentLine) {
+                formattedText += currentLine.trim();
+            }
+    
+            return formattedText.trim();
+        }
+    
+        function sendAudioToServer(audioBlob) {
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.wav');
+    
+            fetch('transcribe.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(text => {
+                const formattedText = formatText(text);
+                output.textContent = formattedText;
+                copyButton.disabled = false;
+                clearButton.disabled = false;
+                status.textContent = 'Transcription complete!';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                output.textContent = 'Error occurred during transcription.';
+                status.textContent = 'An error occurred.';
+                clearButton.disabled = false;
+            });
+        }
     </script>
-</body>
-</html>
-
